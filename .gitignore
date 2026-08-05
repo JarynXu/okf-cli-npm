@@ -1,0 +1,8 @@
+node_modules/
+dist/
+*.tgz
+.DS_Store
+coverage/
+packages/*/bin/okf
+packages/*/bin/okf.exe
+!packages/*/bin/.gitkeep
