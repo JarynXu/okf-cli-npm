@@ -1,0 +1,10 @@
+{
+  "name": "@open-knowledge-stack/okf-linux-x64",
+  "version": "0.1.0-alpha.1",
+  "description": "Native OKF CLI binary for linux x64",
+  "license": "Apache-2.0",
+  "preferUnplugged": true,
+  "os": ["linux"],
+  "cpu": ["x64"],
+  "files": ["bin/okf", "README.md", "LICENSE", "NOTICE"]
+}

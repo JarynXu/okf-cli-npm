@@ -1,0 +1,126 @@
+name: Release
+
+on:
+  issues:
+    types: [opened]
+
+concurrency:
+  group: release-${{ github.repository }}
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+  issues: write
+
+jobs:
+  release:
+    if: >-
+      github.event.issue.user.login == github.repository_owner &&
+      startsWith(github.event.issue.title, 'release-artifacts ')
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - name: Capture and validate release input
+        env:
+          RELEASE_INPUT: ${{ github.event.issue.body }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          printf '%s' "$RELEASE_INPUT" > release-input.json
+          node - <<'NODE'
+          const fs = require('node:fs');
+          const input = JSON.parse(fs.readFileSync('release-input.json', 'utf8'));
+          const packageVersion = require('./package.json').version;
+          const required = [
+            'linux-x64', 'linux-arm64', 'darwin-x64',
+            'darwin-arm64', 'win32-x64', 'win32-arm64'
+          ];
+          if (input.version !== packageVersion) {
+            throw new Error(`release version ${input.version} does not match ${packageVersion}`);
+          }
+          for (const key of required) {
+            if (typeof input.artifacts?.[key] !== 'string' || !input.artifacts[key].startsWith('https://')) {
+              throw new Error(`missing HTTPS artifact URL for ${key}`);
+            }
+          }
+          NODE
+      - name: Download and install native binaries
+        shell: bash
+        run: |
+          set -euo pipefail
+          node - <<'NODE'
+          const fs = require('node:fs');
+          const input = JSON.parse(fs.readFileSync('release-input.json', 'utf8'));
+          for (const [key, url] of Object.entries(input.artifacts)) {
+            console.log(`${key}\t${url}`);
+          }
+          NODE
+          while IFS=$'\t' read -r key url; do
+            archive="/tmp/${key}.zip"
+            output="/tmp/${key}"
+            curl --fail --location --silent --show-error "$url" --output "$archive"
+            mkdir -p "$output"
+            unzip -q "$archive" -d "$output"
+            case "$key" in
+              linux-x64) package="okf-linux-x64"; executable="okf" ;;
+              linux-arm64) package="okf-linux-arm64"; executable="okf" ;;
+              darwin-x64) package="okf-darwin-x64"; executable="okf" ;;
+              darwin-arm64) package="okf-darwin-arm64"; executable="okf" ;;
+              win32-x64) package="okf-win32-x64"; executable="okf.exe" ;;
+              win32-arm64) package="okf-win32-arm64"; executable="okf.exe" ;;
+              *) echo "unsupported artifact key: $key" >&2; exit 1 ;;
+            esac
+            install -d "packages/${package}/bin"
+            install -m 0755 "${output}/${executable}" "packages/${package}/bin/${executable}"
+          done < <(node - <<'NODE'
+          const fs = require('node:fs');
+          const input = JSON.parse(fs.readFileSync('release-input.json', 'utf8'));
+          for (const [key, url] of Object.entries(input.artifacts)) {
+            process.stdout.write(`${key}\t${url}\n`);
+          }
+          NODE
+          )
+      - name: Redact consumed URLs
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          gh issue edit "${{ github.event.issue.number }}" \
+            --repo "$GITHUB_REPOSITORY" \
+            --body "Release inputs were consumed and redacted by the automated release workflow."
+      - name: Verify and package npm distributions
+        shell: bash
+        run: |
+          set -euo pipefail
+          npm ci
+          npm run check
+          mkdir -p dist
+          for package in packages/*; do
+            npm pack "$package" --pack-destination dist
+          done
+          (cd dist && sha256sum *.tgz > SHA256SUMS)
+      - name: Create GitHub prerelease
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          VERSION=$(node -p "require('./package.json').version")
+          TAG="v${VERSION}"
+          if gh release view "$TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            echo "Release $TAG already exists; nothing to do."
+          else
+            gh release create "$TAG" dist/* \
+              --repo "$GITHUB_REPOSITORY" \
+              --target "$GITHUB_SHA" \
+              --title "OKF CLI npm distribution $TAG" \
+              --generate-notes \
+              --prerelease
+          fi
+          gh issue close "${{ github.event.issue.number }}" \
+            --repo "$GITHUB_REPOSITORY" \
+            --comment "Release workflow completed for $TAG."

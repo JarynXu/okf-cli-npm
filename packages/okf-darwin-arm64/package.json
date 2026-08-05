@@ -1,0 +1,10 @@
+{
+  "name": "@open-knowledge-stack/okf-darwin-arm64",
+  "version": "0.1.0-alpha.1",
+  "description": "Native OKF CLI binary for darwin arm64",
+  "license": "Apache-2.0",
+  "preferUnplugged": true,
+  "os": ["darwin"],
+  "cpu": ["arm64"],
+  "files": ["bin/okf", "README.md", "LICENSE", "NOTICE"]
+}

@@ -1,0 +1,21 @@
+{
+  "name": "okf-cli-npm-workspace",
+  "version": "0.1.0-alpha.1",
+  "private": true,
+  "description": "Release workspace for the npm distribution of the native OKF CLI",
+  "type": "module",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "test": "node --test test/*.test.mjs",
+    "lint": "node --check packages/okf/bin/okf.js && node --check packages/okf/lib/resolve-binary.js && node --check scripts/*.mjs",
+    "validate": "node scripts/validate-packages.mjs",
+    "check": "npm run lint && npm test && npm run validate"
+  },
+  "license": "Apache-2.0",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/open-knowledge-stack/okf-cli-npm.git"
+  }
+}
