@@ -30,6 +30,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          echo "RELEASE_PHASE=validate-input" >> "$GITHUB_ENV"
           printf '%s' "$RELEASE_INPUT" > release-input.json
           node - <<'NODE'
           const fs = require('node:fs');
@@ -52,13 +53,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          node - <<'NODE'
-          const fs = require('node:fs');
-          const input = JSON.parse(fs.readFileSync('release-input.json', 'utf8'));
-          for (const [key, url] of Object.entries(input.artifacts)) {
-            console.log(`${key}\t${url}`);
-          }
-          NODE
+          echo "RELEASE_PHASE=download-binaries" >> "$GITHUB_ENV"
           while IFS=$'\t' read -r key url; do
             archive="/tmp/${key}.zip"
             output="/tmp/${key}"
@@ -89,6 +84,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         shell: bash
         run: |
+          echo "RELEASE_PHASE=redact-input" >> "$GITHUB_ENV"
           gh issue edit "${{ github.event.issue.number }}" \
             --repo "$GITHUB_REPOSITORY" \
             --body "Release inputs were consumed and redacted by the automated release workflow."
@@ -96,11 +92,12 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          echo "RELEASE_PHASE=package" >> "$GITHUB_ENV"
           npm ci
           npm run check
           mkdir -p dist
           for package in packages/*; do
-            npm pack "$package" --pack-destination dist
+            npm pack "./$package" --pack-destination dist
           done
           (cd dist && sha256sum *.tgz > SHA256SUMS)
       - name: Create GitHub prerelease
@@ -109,6 +106,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          echo "RELEASE_PHASE=create-release" >> "$GITHUB_ENV"
           VERSION=$(node -p "require('./package.json').version")
           TAG="v${VERSION}"
           if gh release view "$TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
@@ -124,3 +122,15 @@ jobs:
           gh issue close "${{ github.event.issue.number }}" \
             --repo "$GITHUB_REPOSITORY" \
             --comment "Release workflow completed for $TAG."
+      - name: Redact and report failure
+        if: failure()
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          gh issue edit "${{ github.event.issue.number }}" \
+            --repo "$GITHUB_REPOSITORY" \
+            --body "Release inputs were redacted after an automated release failure."
+          gh issue close "${{ github.event.issue.number }}" \
+            --repo "$GITHUB_REPOSITORY" \
+            --comment "Release workflow failed during phase: ${RELEASE_PHASE:-setup}. No signed artifact URL was retained."
