@@ -1,6 +1,6 @@
 {
   "name": "okf-cli-npm-workspace",
-  "version": "0.1.0-alpha.1",
+  "version": "0.2.0-alpha.1",
   "private": true,
   "description": "Release workspace for the npm distribution of the native OKF CLI",
   "type": "module",
@@ -16,6 +16,6 @@
   "license": "Apache-2.0",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/open-knowledge-stack/okf-cli-npm.git"
+    "url": "git+https://github.com/JarynXu/okf-cli-npm.git"
   }
 }
