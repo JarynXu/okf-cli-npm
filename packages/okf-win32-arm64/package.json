@@ -1,6 +1,6 @@
 {
   "name": "@open-knowledge-stack/okf-win32-arm64",
-  "version": "0.1.0-alpha.1",
+  "version": "0.2.0-alpha.1",
   "description": "Native OKF CLI binary for win32 arm64",
   "license": "Apache-2.0",
   "preferUnplugged": true,
