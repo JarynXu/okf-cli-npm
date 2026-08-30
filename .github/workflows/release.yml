@@ -11,6 +11,7 @@ concurrency:
 permissions:
   contents: write
   issues: write
+  id-token: write
 
 jobs:
   release:
@@ -24,6 +25,7 @@ jobs:
         with:
           node-version: 24
           cache: npm
+          registry-url: https://registry.npmjs.org
       - name: Capture and validate release input
         env:
           RELEASE_INPUT: ${{ github.event.issue.body }}
@@ -36,30 +38,43 @@ jobs:
           const fs = require('node:fs');
           const input = JSON.parse(fs.readFileSync('release-input.json', 'utf8'));
           const packageVersion = require('./package.json').version;
-          const required = [
-            'linux-x64', 'linux-arm64', 'darwin-x64',
-            'darwin-arm64', 'win32-x64', 'win32-arm64'
-          ];
+          const files = {
+            'linux-x64': `okf-v${packageVersion}-x86_64-unknown-linux-gnu.tar.gz`,
+            'linux-arm64': `okf-v${packageVersion}-aarch64-unknown-linux-gnu.tar.gz`,
+            'darwin-x64': `okf-v${packageVersion}-x86_64-apple-darwin.tar.gz`,
+            'darwin-arm64': `okf-v${packageVersion}-aarch64-apple-darwin.tar.gz`,
+            'win32-x64': `okf-v${packageVersion}-x86_64-pc-windows-msvc.zip`,
+            'win32-arm64': `okf-v${packageVersion}-aarch64-pc-windows-msvc.zip`
+          };
           if (input.version !== packageVersion) {
             throw new Error(`release version ${input.version} does not match ${packageVersion}`);
           }
-          for (const key of required) {
-            if (typeof input.artifacts?.[key] !== 'string' || !input.artifacts[key].startsWith('https://')) {
-              throw new Error(`missing HTTPS artifact URL for ${key}`);
+          for (const [key, file] of Object.entries(files)) {
+            const expected = `https://github.com/JarynXu/okf-cli/releases/download/v${packageVersion}/${file}`;
+            if (input.artifacts?.[key] !== expected) {
+              throw new Error(`artifact URL for ${key} must be ${expected}`);
             }
           }
           NODE
-      - name: Download and install native binaries
+      - name: Download, verify, and install native binaries
         shell: bash
         run: |
           set -euo pipefail
           echo "RELEASE_PHASE=download-binaries" >> "$GITHUB_ENV"
           while IFS=$'\t' read -r key url; do
-            archive="/tmp/${key}.zip"
-            output="/tmp/${key}"
+            filename="${url##*/}"
+            archive="/tmp/${filename}"
+            checksum="${archive}.sha256"
+            output="/tmp/extract-${key}"
             curl --fail --location --silent --show-error "$url" --output "$archive"
+            curl --fail --location --silent --show-error "${url}.sha256" --output "$checksum"
+            (cd /tmp && sha256sum --check "${filename}.sha256")
             mkdir -p "$output"
-            unzip -q "$archive" -d "$output"
+            case "$filename" in
+              *.zip) unzip -q "$archive" -d "$output" ;;
+              *.tar.gz) tar -xzf "$archive" -C "$output" ;;
+              *) echo "unsupported archive format: $filename" >&2; exit 1 ;;
+            esac
             case "$key" in
               linux-x64) package="okf-linux-x64"; executable="okf" ;;
               linux-arm64) package="okf-linux-arm64"; executable="okf" ;;
@@ -69,6 +84,7 @@ jobs:
               win32-arm64) package="okf-win32-arm64"; executable="okf.exe" ;;
               *) echo "unsupported artifact key: $key" >&2; exit 1 ;;
             esac
+            test -s "${output}/${executable}"
             install -d "packages/${package}/bin"
             install -m 0755 "${output}/${executable}" "packages/${package}/bin/${executable}"
           done < <(node - <<'NODE'
@@ -109,8 +125,9 @@ jobs:
           echo "RELEASE_PHASE=create-release" >> "$GITHUB_ENV"
           VERSION=$(node -p "require('./package.json').version")
           TAG="v${VERSION}"
+          echo "TAG=${TAG}" >> "$GITHUB_ENV"
           if gh release view "$TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
-            echo "Release $TAG already exists; nothing to do."
+            echo "Release $TAG already exists; retaining the existing immutable package artifacts."
           else
             gh release create "$TAG" dist/* \
               --repo "$GITHUB_REPOSITORY" \
@@ -119,9 +136,61 @@ jobs:
               --generate-notes \
               --prerelease
           fi
+      - name: Publish packages to npm
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo "RELEASE_PHASE=publish-npm" >> "$GITHUB_ENV"
+          if [[ -z "${NODE_AUTH_TOKEN:-}" ]]; then
+            echo "NPM_TOKEN is not configured for this repository." >&2
+            exit 1
+          fi
+          publish_if_missing() {
+            local directory="$1"
+            local name version
+            name=$(node -p "require('./${directory}/package.json').name")
+            version=$(node -p "require('./${directory}/package.json').version")
+            if npm view "${name}@${version}" version --registry https://registry.npmjs.org >/dev/null 2>&1; then
+              echo "${name}@${version} already exists; skipping."
+            else
+              npm publish "./${directory}" \
+                --access public \
+                --tag alpha \
+                --provenance \
+                --registry https://registry.npmjs.org
+            fi
+          }
+          for package in \
+            packages/okf-linux-x64 \
+            packages/okf-linux-arm64 \
+            packages/okf-darwin-x64 \
+            packages/okf-darwin-arm64 \
+            packages/okf-win32-x64 \
+            packages/okf-win32-arm64; do
+            publish_if_missing "$package"
+          done
+          publish_if_missing packages/okf
+          VERSION=$(node -p "require('./package.json').version")
+          for package in \
+            @open-knowledge-stack/okf-linux-x64 \
+            @open-knowledge-stack/okf-linux-arm64 \
+            @open-knowledge-stack/okf-darwin-x64 \
+            @open-knowledge-stack/okf-darwin-arm64 \
+            @open-knowledge-stack/okf-win32-x64 \
+            @open-knowledge-stack/okf-win32-arm64 \
+            @open-knowledge-stack/okf; do
+            test "$(npm view "${package}@${VERSION}" version --registry https://registry.npmjs.org)" = "$VERSION"
+          done
+      - name: Close successful release request
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
           gh issue close "${{ github.event.issue.number }}" \
             --repo "$GITHUB_REPOSITORY" \
-            --comment "Release workflow completed for $TAG."
+            --comment "Release workflow completed for $TAG, including npm registry verification."
       - name: Redact and report failure
         if: failure()
         env:
@@ -133,4 +202,4 @@ jobs:
             --body "Release inputs were redacted after an automated release failure."
           gh issue close "${{ github.event.issue.number }}" \
             --repo "$GITHUB_REPOSITORY" \
-            --comment "Release workflow failed during phase: ${RELEASE_PHASE:-setup}. No signed artifact URL was retained."
+            --comment "Release workflow failed during phase: ${RELEASE_PHASE:-setup}. No artifact URL or credential was retained."
