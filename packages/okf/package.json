@@ -1,20 +1,20 @@
 {
   "name": "@open-knowledge-stack/okf",
-  "version": "0.1.0-alpha.1",
+  "version": "0.2.0-alpha.1",
   "description": "npm distribution wrapper for the native Open Knowledge Format CLI",
   "license": "Apache-2.0",
   "type": "module",
   "bin": { "okf": "bin/okf.js" },
   "files": ["bin/okf.js", "lib/resolve-binary.js", "README.md", "LICENSE", "NOTICE"],
   "engines": { "node": ">=20" },
-  "repository": { "type": "git", "url": "git+https://github.com/open-knowledge-stack/okf-cli-npm.git", "directory": "packages/okf" },
-  "keywords": ["okf", "knowledge", "cli", "agent"],
+  "repository": { "type": "git", "url": "git+https://github.com/JarynXu/okf-cli-npm.git", "directory": "packages/okf" },
+  "keywords": ["okf", "knowledge", "cli", "agent", "library"],
   "optionalDependencies": {
-    "@open-knowledge-stack/okf-linux-x64": "0.1.0-alpha.1",
-    "@open-knowledge-stack/okf-linux-arm64": "0.1.0-alpha.1",
-    "@open-knowledge-stack/okf-darwin-x64": "0.1.0-alpha.1",
-    "@open-knowledge-stack/okf-darwin-arm64": "0.1.0-alpha.1",
-    "@open-knowledge-stack/okf-win32-x64": "0.1.0-alpha.1",
-    "@open-knowledge-stack/okf-win32-arm64": "0.1.0-alpha.1"
+    "@open-knowledge-stack/okf-linux-x64": "0.2.0-alpha.1",
+    "@open-knowledge-stack/okf-linux-arm64": "0.2.0-alpha.1",
+    "@open-knowledge-stack/okf-darwin-x64": "0.2.0-alpha.1",
+    "@open-knowledge-stack/okf-darwin-arm64": "0.2.0-alpha.1",
+    "@open-knowledge-stack/okf-win32-x64": "0.2.0-alpha.1",
+    "@open-knowledge-stack/okf-win32-arm64": "0.2.0-alpha.1"
   }
 }
