@@ -1,0 +1,28 @@
+name: One-time obsolete branch cleanup
+
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: write
+
+jobs:
+  cleanup:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Delete merged release branches
+        shell: bash
+        run: |
+          set -euo pipefail
+          for branch in \
+            develop \
+            release/0.2.0-alpha.1 \
+            fix/npm-release-workflow; do
+            if git ls-remote --exit-code --heads origin "$branch" >/dev/null 2>&1; then
+              git push origin --delete "$branch"
+            fi
+          done
